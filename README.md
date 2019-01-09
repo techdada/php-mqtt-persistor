@@ -1,8 +1,8 @@
-## php-mqtt-persistor
+# php-mqtt-persistor
 
 Persists topics received via MQTT for at least 24h. Priorized topics can be defined that are kept until deleted.
 
-# Setup
+## Setup
 To run, create a config file like this:
 
 ```
@@ -39,6 +39,24 @@ and import the database structure:
 
 ```
 mysql -umqtt_persistence -p -D mqtt_persistence < structure.sql
+```
+
+to run, just type ./persistor.php
+
+To have it run in the background of linux systems like e.g. Fedora/RHEL/CentOS or Ubuntu/Debian or other systemd-based distributions there is a systemd-unit file mqtt-persistor.service, which can be installed/activated like this (make sure you adapt the path inside to point to your directory):
+
+```
+cp mqtt-persistor.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now mqtt-persistor.service
+```
+
+For starting and stopping or getting status information:
+```
+systemctl start mqtt-persistor
+systemctl stop ...
+systemctl restart ...
+systemctl status ...
 ```
 
 
