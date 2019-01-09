@@ -58,8 +58,10 @@ if (php_sapi_name() != 'cli') {
 }
 
 if (!Properties::init($_SERVER['HOME'].'/.config/phpMQTTbridge/config.properties')) {
+    if (!Properties::init('config.properties')) {
         echo 'Could not load properties. Exiting.';
         exit(1);
+    }
 }
 
 $topics = [];
