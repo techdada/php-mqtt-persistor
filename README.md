@@ -2,6 +2,11 @@
 
 Persists topics received via MQTT for at least 24h. Priorized topics can be defined that are kept until deleted.
 
+Persistence happens in two steps: All received topics and the messages are saved to the database table "current_state", similar to what the retain flag of MQTT does. The update timestamp is preserved ("edited_at").
+On this table there is a trigger defined, that checks if the new value differs the old one. Only if this is the case, it inserts the old value to the table "persistence". 
+
+This way some data is saved compared to storing each received message.
+
 ## Setup
 To run, create a config file like this:
 
