@@ -1,0 +1,11 @@
+[Unit]
+Description=PHP based event listener and notifier for MQTT events
+After=network-online.target
+
+[Service]
+Type=simple
+User=mqtt-alerter
+ExecStart=/opt/mqtt-alerter/event_listener.php
+
+[Install]
+WantedBy=multi-user.target
