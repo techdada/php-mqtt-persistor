@@ -20,24 +20,35 @@ class SensorFlow {
     protected $connection = NULL;
     protected static $me;
     public $affectedRows;
+    protected $dburl,$dbuser,$dbpassword,$dbtype;
     
     public function __construct($dburl,$user,$password) {
-        $type = explode(':',$dburl)[0];
-        if ( $type=='mysql' ) {
+        $this->dburl = $dburl;
+        $this->dbuser = $user;
+        $this->dbpassword = $password;
+        $this->dbtype = explode(':',$this->dburl)[0];
+        
+        $this->connectDB();
+        
+        //$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING); //TODO: deactive database error messages for production use
+        //	date_default_timezone_set('UTC'); //enable this, if you would like to use UTC whereever possible, otherwise use server�s default. recommended.
+    }
+    
+    protected function connectDB() {
+        if ( $this->dbtype=='mysql' ) {
             $this->connection=new PDO(
-                $dburl,
-                $user,
-                $password
+                $this->dburl,
+                $this->dbuser,
+                $this->dbpassword
                 );
-        } elseif ($type == 'sqlite') {
+        } elseif ($this->dbtype == 'sqlite') {
             $this->connection=new PDO(
-                $dburl
+                $this->dburl
                 );
         } else {
             die('unsupported DB');
         }
-        //$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING); //TODO: deactive database error messages for production use
-        //	date_default_timezone_set('UTC'); //enable this, if you would like to use UTC whereever possible, otherwise use server�s default. recommended.
+        return $this->connection;
     }
     
     public static function affectedRows() {
@@ -57,10 +68,20 @@ class SensorFlow {
         return self::$me->_execute($sql, $valuearray);
     }
     
+    /**
+     * 
+     * @return NULL|\PDO
+     */
+    protected function getConnection() {
+        if ($this->connection === null) {
+            return $this->connectDB();
+        } else return $this->connection;
+    }
+    
     public function _execute($sql,$valuearray) {
         try {
             
-            if (!$stmt = $this->connection->prepare($sql)) {
+            if (!$stmt = $this->getConnection()->prepare($sql)) {
                 echo "Could not prepare Statement\n";
                 return false;
             }
@@ -71,7 +92,12 @@ class SensorFlow {
             } else {
                 global $debug;
                 if ($debug) {
-                    var_dump( $stmt->errorInfo() );
+                    $ei = $stmt->errorInfo();
+		    if ($ei[0] == "HY000") {
+			// reset connection to reconnect to DB:
+			$this->connection = null;
+		    }
+		    echo "{$ei[3]} ({$ei[0]}): \n";
                     echo $sql."\n";
                 }
                 return false;
@@ -107,35 +133,53 @@ class SensorFlow {
         $from = intval($from);
         $to = intval($to);
         $executor = [];
-        $sql = "SELECT topic,value,created_at FROM persistence\n
+        $sqp = "SELECT topic,value,created_at FROM persistence\n
 				WHERE ( 0";
+        $sqc = " SELECT topic,value,edited_at as created_at FROM current_state
+                     WHERE ( 0";
+              
         foreach ($topics as $ix => $topic) {
-            $sql .= " OR topic like :t{$ix} ";
+            $topic = str_replace(['+','#'],['%','%'],$topic);
+            $sqp .= " OR topic like :t{$ix} ";
+            $sqc .= " OR topic like :t{$ix} ";
             $executor[':t'.$ix] = $topic;
         }
-        $sql .= ") \n";
+        $sqp .= ") \n";
+        $sqc .= ") \n";
         if ($from) {
-            $sql.= " AND unix_timestamp(created_at) > :fromts ";
+            $sqp.= " AND unix_timestamp(created_at) > :fromts ";
+            $sqc.= " AND unix_timestamp(edited_at) > :fromts ";
             $executor[':fromts'] = $from;
         }
         if ($to) {
-            $sql.= " AND unix_timestamp(created_at) < :tots ";
+            $sqp.= " AND unix_timestamp(created_at) < :tots ";
+            $sqc.= " AND unix_timestamp(edited_at) < :tots ";
             $executor[':tots'] = $to;
         }
+        $sql = $sqp; 
+        $sql .= " UNION ALL ";
+        $sql .= $sqc;
         
         $sql .= " ORDER BY topic,created_at\n";
+       
+//         $sqd = $sql;
+//         foreach ($executor as $search => $replace) {
+//             $sqd = str_replace($search,"'".$replace."'",$sqd);
+//         }
+//         echo $sqd;
+        //;
+        
         if ($result = $this->_execute($sql, $executor)) {
             $dataset = [
                 'data' => [],
                 'fromts' => $from,
                 'tots' => $to,
-                'sql' => $sql
-                //'labels'  => [],
+                'sql' => '' //$sql //dbug
             ];
+            
             while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
                 $dataset['data'][$row['topic']][$row['created_at']] = $row['value'];
             }
-            //$dataset['labels'][] = $t;
             return $dataset;
         }
     }
@@ -159,7 +203,7 @@ class SensorFlow {
         if ($limit) $sql .=" LIMIT {$limit}"; // max 15 sensor values
         
         
-        $stmt = $this->connection->prepare($sql);
+        $stmt = $this->getConnection()->prepare($sql);
         if ($stmt->execute($exec)) {
             while ($result = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 $response[] = [
@@ -180,7 +224,7 @@ class SensorFlow {
         $exec = [':topic' => $topic ];
         $sql = "SELECT topic,value,edited_at FROM current_state WHERE topic = :topic";
         
-        $stmt = $this->connection->prepare($sql);
+        $stmt = $this->getConnection()->prepare($sql);
         if ($stmt->execute($exec)) {
             while ($result = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 return [
@@ -191,6 +235,23 @@ class SensorFlow {
             }
         }
         return "";
+    }
+    
+    public function _getAllTopics() {
+        $sql = "SELECT DISTINCT topic FROM current_state order by topic";
+        $r = [];
+        $stmt = $this->getConnection()->prepare($sql);
+        if ($stmt->execute($exec)) {
+            while ($result = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                $r[]= $result['topic'];
+            }
+            return $r;
+        }
+        return "";
+    }
+    
+    public static function getAllTopics() {
+        return self::$me->_getAllTopics();
     }
     
     
@@ -206,34 +267,31 @@ class SensorFlow {
      * @param string $table
      * @param array $kvpairs
      */
-    public function writeToTable($table, $kvpairs) {
-        $sql  = "INSERT INTO {$table} (";
-        $sql .=  join(',',array_keys($kvpairs));
-        $sql .= ") VALUES (";
-        $sql .= ":".join(',:',array_keys($kvpairs));
-        $sql .= ") ";
-        $sql .= "ON DUPLICATE KEY UPDATE  ";
-        foreach (array_keys($kvpairs) as $key) {
-            $sql .= " {$key} = :{$key},";
-        }
-        $sql[strlen($sql)-1] = ' '; // remove trailing ','
-        $sql .= "";
+    public function writeToTable($table, $kvpairs,$retry = 0) {
+        $sql  = "INSERT INTO current_state ( topic, value ) VALUES ( :topic, :value ) ";
+        $sql .= "ON DUPLICATE KEY UPDATE  value = :value";
         try {
             
-            if (!$stmt = $this->connection->prepare($sql)) {
+            if (!$stmt = $this->getConnection()->prepare($sql)) {
                 echo "Could not prepare Statement\n";
                 return false;
             }
             $executor = [];
-            foreach ($kvpairs as $k => $v) {
-                $executor[':'.$k] = $v;
-            }
+            $executor[':topic'] = $kvpairs['topic'];
+            $executor[':value'] = $kvpairs['value'];
+            
             $stmt->execute($executor);
-            //             if (!$stmt->execute($executor)) {
-            //                 var_dump( $stmt->errorInfo() );
-            //                 echo $sql."\n";
-            //                 return false;
-            //             }
+                if (!$stmt->execute($executor)) {
+                    $errInfo = $stmt->errorInfo();
+
+                    echo $sql."\n";
+                    echo 'Topic: '.$kvpairs['topic'].', value: '.$kvpairs['value']."\n";
+                    if ( $errInfo[1] == 2006 ) {
+                       $this->connection = null;
+                       if ($retry < 20) return $this->writeToTable($table,$kvpairs,$retry++);
+                       die("Number of retries (20) exceeded"); 
+                    }
+                }
         } catch (PDOException $pe) {
             echo $pe->getMessage();
             return false;
@@ -246,3 +304,4 @@ class SensorFlow {
         return self::$me->writeToTable($table, $kvpairs);
     }
 }
+

@@ -4,6 +4,7 @@ namespace techdada;
 /*
  	phpMQTT
 	A simple php class to connect/publish/subscribe to an MQTT broker
+	
 
 */
 
@@ -216,7 +217,7 @@ class phpMQTT {
 			$buffer .= chr($topic["qos"]);  $i++;
 			$this->topics[$key] = $topic; 
 		
-			$cmd = 0x80;
+			$cmd = 0x82;
 			//$qos
 			$cmd +=	($qos << 1);
 
