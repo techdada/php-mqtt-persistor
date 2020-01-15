@@ -1,0 +1,13 @@
+[Unit]
+Description=PHP based MQTT persistence framework for MySQL/MariaDB
+After=network-online.target mariadb.service
+
+[Service]
+Type=simple
+User=mqtt-alerter
+ExecStart=/opt/mqtt-persistor/persistor.php
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
