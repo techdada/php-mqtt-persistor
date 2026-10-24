@@ -3,7 +3,7 @@ $properties=array();
 
 /**
  * Simple properties class
- * 
+ *
  * @author dada
  *
  */
@@ -30,6 +30,13 @@ class Properties {
 			return false;
 		}
 	}
+    public static function getQos() {
+        $value = (string) self::get('mqtt_qos', '0');
+        if (!in_array($value, ['0', '1', '2'], true)) {
+            throw new \InvalidArgumentException('mqtt_qos must be 0, 1 or 2');
+        }
+        return (int) $value;
+    }
 	public static function get($key,$default='') {
 		global $properties;
 		if (array_key_exists($key,$properties)) {

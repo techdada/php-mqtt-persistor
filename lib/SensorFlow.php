@@ -39,7 +39,8 @@ class SensorFlow {
             $this->connection=new PDO(
                 $this->dburl,
                 $this->dbuser,
-                $this->dbpassword
+                $this->dbpassword,
+                [PDO::ATTR_TIMEOUT => 5]
                 );
         } elseif ($this->dbtype == 'sqlite') {
             $this->connection=new PDO(
@@ -48,6 +49,8 @@ class SensorFlow {
         } else {
             die('unsupported DB');
         }
+        $this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->connection->setAttribute(PDO::ATTR_TIMEOUT, 5);
         return $this->connection;
     }
     
@@ -61,7 +64,7 @@ class SensorFlow {
     }
     
     public static function close() {
-        return self::$me->_close();
+        return self::$me ? self::$me->_close() : true;
     }
     
     public static function execute($sql,$valuearray) {
@@ -241,7 +244,7 @@ class SensorFlow {
         $sql = "SELECT DISTINCT topic FROM current_state order by topic";
         $r = [];
         $stmt = $this->getConnection()->prepare($sql);
-        if ($stmt->execute($exec)) {
+        if ($stmt->execute([])) {
             while ($result = $stmt->fetch(\PDO::FETCH_ASSOC)) {
                 $r[]= $result['topic'];
             }
@@ -267,39 +270,24 @@ class SensorFlow {
      * @param string $table
      * @param array $kvpairs
      */
-    public function writeToTable($table, $kvpairs,$retry = 0) {
-        $sql  = "INSERT INTO current_state ( topic, value ) VALUES ( :topic, :value ) ";
-        $sql .= "ON DUPLICATE KEY UPDATE  value = :value";
-        try {
-            
-            if (!$stmt = $this->getConnection()->prepare($sql)) {
-                echo "Could not prepare Statement\n";
-                return false;
+    public function writeToTable($table, $kvpairs, $retry = 0) {
+        $sql = "INSERT INTO current_state (topic, value) VALUES (:topic, :value) "
+             . "ON DUPLICATE KEY UPDATE value = VALUES(value)";
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $stmt = $this->getConnection()->prepare($sql);
+                return $stmt->execute([':topic' => $kvpairs['topic'], ':value' => $kvpairs['value']]);
+            } catch (PDOException $error) {
+                // Retry connection failures only, never schema/permission/data errors.
+                $code = (int) ($error->errorInfo[1] ?? 0);
+                if (!in_array($code, [2002, 2003, 2006, 2013, 2055], true)) throw $error;
+                $this->connection = null;
+                if ($attempt >= 2) throw $error;
+                sleep($attempt + 1);
             }
-            $executor = [];
-            $executor[':topic'] = $kvpairs['topic'];
-            $executor[':value'] = $kvpairs['value'];
-            
-            $stmt->execute($executor);
-                if (!$stmt->execute($executor)) {
-                    $errInfo = $stmt->errorInfo();
-
-                    echo $sql."\n";
-                    echo 'Topic: '.$kvpairs['topic'].', value: '.$kvpairs['value']."\n";
-                    if ( $errInfo[1] == 2006 ) {
-                       $this->connection = null;
-                       if ($retry < 20) return $this->writeToTable($table,$kvpairs,$retry++);
-                       die("Number of retries (20) exceeded"); 
-                    }
-                }
-        } catch (PDOException $pe) {
-            echo $pe->getMessage();
-            return false;
         }
-        return true;
-        
     }
-    
+
     public static function write($table, $kvpairs) {
         return self::$me->writeToTable($table, $kvpairs);
     }

@@ -1,0 +1,17 @@
+broker=127.0.0.1
+broker_port=1883
+# Empty value explicitly disables TLS; for TLS set broker_tls=tls and broker_port=8883.
+broker_tls=
+#ca_path=/etc/ssl/certs/ca-certificates.crt
+#broker_user=
+#broker_pass=
+persistence_dbhost=localhost
+persistence_db=mqtt_persistence
+persistence_dbuser=mqtt_persistence
+persistence_dbpassword=REPLACE_ME
+# Subscription QoS: 0 (default), 1 or 2. Publisher QoS may lower delivery QoS.
+mqtt_qos=0
+persisted_topic0=systems/#
+persisted_topic1=temperature/#
+cleanup_interval=2
+#priority_topic0=systems/temperature

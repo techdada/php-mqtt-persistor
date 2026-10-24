@@ -64,14 +64,19 @@ if (!Properties::init($_SERVER['HOME'].'/.config/phpMQTTbridge/config.properties
     }
 }
 
+$mqttQos = Properties::getQos();
 $topics = [];
 $topicnr=0;
 while ($topic = Properties::get('persisted_topic'.$topicnr)) {
     $topics[$topic] = [ 
-        'qos' => 0,
+        'qos' => $mqttQos,
         'function' => 'persist'
     ];
     $topicnr++;
+}
+if (!$topics) {
+    fwrite(STDERR, "No persisted_topic0 configured.\n");
+    exit(1);
 }
 $ca_path = Properties::get('ca_path','/etc/ssl/certs/ca-bundle.crt');
 $tls = Properties::get('broker_tls','tlsv1.2');
@@ -80,7 +85,7 @@ if (!$tls) $ca_path = NULL; // reset, if not needed.
 $mqttc = new phpMQTT(
         Properties::get('broker'), 
         Properties::get('broker_port',8883), 
-        uniqid($_SERVER['HOSTNAME'].$_SERVER['USER']),
+        uniqid((gethostname() ?: 'persistor') . '-'),
         $ca_path,
         $tls
     );
@@ -88,18 +93,18 @@ $mqttc = new phpMQTT(
 
 // connect: 
 // .. to DB:
-$db_dsn = 'mysql:'.Properties::get('persistence_dbhost').'=;dbname='.Properties::get('persistence_db');
+$db_dsn = 'mysql:host='.Properties::get('persistence_dbhost','localhost').';charset=utf8mb4;dbname='.Properties::get('persistence_db');
 if (!SensorFlow::start($db_dsn,Properties::get('persistence_dbuser'),Properties::get('persistence_dbpassword'))) {
     die('Cannot connect to database.');
 }
 // .. to MQTT:
-$mqttc->connect_auto(true,null,Properties::get('broker_user'),Properties::get('broker_pass'));
+// proc() owns all connection attempts, including initial startup.
+// Store credentials without making a blocking connect_auto() call.
+$mqttc->setCredentials(Properties::get('broker_user'), Properties::get('broker_pass'));
 
 
 // listen to everything but telematic and control requests:
-$mqttc->subscribe(
-    $topics
-);
+$mqttc->topics = $topics;
 
 //loop forever:
 exec('nohup '. __DIR__ .'/cleanup.php > /tmp/mqtt_persistor_cleanup.log 2>&1 &');

@@ -58,7 +58,7 @@ while ($topic = Properties::get('priority_topic'.$priority_topic_cnt)) {
 
 // connect:
 // .. to DB:
-$db_dsn = 'mysql:'.Properties::get('persistence_dbhost').'=;dbname='.Properties::get('persistence_db');
+$db_dsn = 'mysql:host='.Properties::get('persistence_dbhost','localhost').';charset=utf8mb4;dbname='.Properties::get('persistence_db');
 if (!SensorFlow::start($db_dsn,Properties::get('persistence_dbuser'),Properties::get('persistence_dbpassword'))) {
     die('Cannot connect to database.');
 }

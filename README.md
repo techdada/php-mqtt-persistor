@@ -11,6 +11,8 @@ This way some data is saved compared to storing each received message.
 To run, create a config file like this:
 
 ```
+mqtt_qos=0
+persisted_topic0=systems/#
 broker=my.mqtt.broker.com
 broker_port=8883
 #optional:
@@ -66,3 +68,22 @@ systemctl status ...
 
 
 
+
+## Reconnection and QoS
+
+Set `mqtt_qos=0`, `1` or `2` in `config.properties` (default: `0`).
+This is the requested QoS for all `persisted_topicN` subscriptions; actual
+message delivery also depends on the publisher QoS and the broker grant.
+Invalid settings stop startup with an error.
+
+The client reconnects automatically, retries with delays from 1 to 30 seconds,
+and subscribes again with the configured QoS. Network reads have timeouts.
+QoS 1 sends PUBACK after the database callback completes. QoS 2 handles
+PUBLISH/PUBREC/PUBREL/PUBCOMP and suppresses duplicate delivery within the
+active session. QoS 2 pending messages are kept in memory (at most 64).
+Clean sessions remain enabled: no offline queue or persistent-session guarantee
+is provided, and QoS 1 can deliver duplicates. Database history is unchanged.
+
+PHP CLI requires PDO MySQL and pcntl, plus OpenSSL for TLS. Tested with PHP 8.3.
+Run the regression tests with `python3 tests/reconnect.py`,
+`python3 tests/qos.py` and `php tests/database.php`.

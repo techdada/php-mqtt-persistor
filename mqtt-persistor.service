@@ -6,7 +6,9 @@ After=network-online.target mariadb.service
 Type=simple
 User=mqtt-alerter
 ExecStart=/opt/mqtt-persistor/persistor.php
+WorkingDirectory=/opt/mqtt-persistor
 Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
